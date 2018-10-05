@@ -7,26 +7,36 @@ import android.util.Log;
 import android.widget.Button;
 import android.widget.LinearLayout;
 
+import org.reactivestreams.Subscription;
+
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 
-
+import io.reactivex.BackpressureOverflowStrategy;
+import io.reactivex.BackpressureStrategy;
 import io.reactivex.Completable;
+import io.reactivex.Flowable;
+import io.reactivex.FlowableSubscriber;
 import io.reactivex.Maybe;
 import io.reactivex.MaybeObserver;
 import io.reactivex.Observable;
+import io.reactivex.ObservableSource;
+import io.reactivex.ObservableTransformer;
 import io.reactivex.Single;
 import io.reactivex.SingleObserver;
 import io.reactivex.disposables.CompositeDisposable;
 import io.reactivex.disposables.Disposable;
+import io.reactivex.internal.operators.observable.ObservableRange;
 import io.reactivex.observables.ConnectableObservable;
 import io.reactivex.observables.GroupedObservable;
 import io.reactivex.observers.DisposableCompletableObserver;
 import io.reactivex.observers.DisposableObserver;
+import io.reactivex.schedulers.Schedulers;
 import io.reactivex.subjects.BehaviorSubject;
 import io.reactivex.subjects.PublishSubject;
 import io.reactivex.subjects.Subject;
@@ -37,6 +47,8 @@ public class MainActivity extends AppCompatActivity {
             "Raj", "OM", "Rajat", "Shubham");
     CompositeDisposable compositeDisposable = new CompositeDisposable();
     boolean transitionHappened = false;
+    int startCount = 0;
+    int finalCount = 5;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -89,6 +101,8 @@ public class MainActivity extends AppCompatActivity {
 //        elementAtExample();
 
 //        elementAtOrErrorExample();
+
+        deferExample();
 
         /// Transform Operators
 
@@ -159,7 +173,7 @@ public class MainActivity extends AppCompatActivity {
 //        flatMapExample();
 
 //        concatExample();
-
+//
 //        concatMapExample();
 
 //        zipExample();
@@ -231,56 +245,268 @@ public class MainActivity extends AppCompatActivity {
 
 //        bufferTimingExample();
 
+//        throttleExample();
+
+//        switchingExample();
+
+
+//        flowableExample();
+
+//        flowableToObservable();
+
+//        observableToFlowable();
+
+//        BACKPRESSURE
+
+//        backPressureBufferExample();
+
+//        backPressureLatestExample();
+
+//        backPressureDropExample();
+
+//        TRANSFORMERS AND CUSTOM OPERATORS
+
+//        In RxJava, there are ways to implement your own custom operators using the compose() and lift() methods,
+//        which exist on both Observable and Flowable. Most of the time, you will likely want to
+//        compose existing RxJava operators to create a new operator.
+
+//        composeExample();
+
+    }
+
+    private void deferExample() {
+
+        /*Observable observable = Observable.range(startCount, finalCount);
+        observable.subscribe(integer -> printLog("Observer 1 = " + integer.toString()));
+//        startCount = 10;
+        observable.subscribe(integer -> printLog("Observer 2 " + integer.toString()));*/
+
+        // The output of the above example would be
+        // Observer 1 = 0 Observer 1 = 1 Observer 1 = 2 Observer 1 = 3 Observer 1 = 4
+        // Observer 2 = 0 Observer 2 = 1 Observer 2 = 2 Observer 2 = 3 Observer 2 = 4
+
+        // Defer will resolve this
+
+        Observable<Integer> observable1 = Observable.defer(() -> Observable.range(startCount, finalCount));
+        observable1.subscribe(integer -> printLog("Observer 1 = "+integer.toString()));
+        startCount = 10;
+        observable1.subscribe(integer -> printLog("Observer 2 = "+integer.toString()));
+    }
+
+    private void composeExample() {
+        Observable.range(1, 15)
+                .compose(toArrayList())
+                .subscribe(integers -> printLog("Size = " + integers.size()));
+
+        Observable.just("Rajat", "Arora", "Jatin", "Shubham", "Anish")
+                .compose(joinToString("/"))
+                .subscribe(strings -> printLog("would be = " + strings));
+    }
+
+    public <T> ObservableTransformer<T, List<T>> toArrayList() {
+        // We will target any generic type T for a given Observable<T>,
+        // and R will be an List<T> emitted through an Observable<List<T>>.
+        // We will package all of this up in an ObservableTransformer<T,List<T>> implementation
+        return upstream -> upstream.toList().toObservable();
+        // Since collect() returns a Single, we will invoke toObservable() on it since ObservableTransformer
+        // expects an Observable, not Single, to be returned.
+    }
+
+    public ObservableTransformer<String, String> joinToString(String seprator) {
+        return upstream -> upstream.collect(StringBuilder::new, (u, s) -> {
+            if (s.length() == 0)
+                u.append(s);
+            else
+                u.append(seprator).append(s);
+        }).map(StringBuilder::toString)
+                .toObservable();
+    }
+
+    private void backPressureLatestExample() {
+        Flowable.interval(1, TimeUnit.MILLISECONDS)
+                .onBackpressureLatest()
+                .observeOn(Schedulers.io())
+                .subscribe(aLong -> printLog(aLong.toString()));
+    }
+
+    private void backPressureDropExample() {
+        Flowable.interval(1, TimeUnit.MILLISECONDS)
+                .onBackpressureDrop(aLong -> printLog("droping = " + aLong))
+                .observeOn(Schedulers.io())
+                .subscribe(aLong -> printLog(aLong.toString()));
+    }
+
+    private void backPressureBufferExample() {
+        // For documentation refer to operatorsRxJava File
+
+        Flowable.interval(1, TimeUnit.MILLISECONDS)
+                .onBackpressureBuffer()
+                .observeOn(Schedulers.io())
+                .subscribe(aLong -> printLog(aLong.toString()));
+
+        // As per the documentation the problem with backpressure buffer is in some cases it get
+        // overloads because of the slow consumption of the events by the downline. To avoid these
+        // there are some Overflow Strategies available.
+
+//        ERROR - Simply throws an error the moment capacity is exceeded
+
+//        DROP_OLDEST - Drops the oldest value from the buffer to make way for a new one
+
+//        DROP_LATEST - Drops the latest value from the buffer to prioritize older, unconsumed values
+
+        Flowable.interval(1, TimeUnit.MILLISECONDS)
+                .onBackpressureBuffer(10, () -> System.out.println("overflow!"),
+                        BackpressureOverflowStrategy.DROP_LATEST)
+                .observeOn(Schedulers.io())
+                .subscribe(i -> {
+                    sleep(5);
+                    System.out.println(i);
+                });
+        sleep(5000);
+
+    }
+
+    private void observableToFlowable() {
+        Observable.fromIterable(namesArray)
+                .toFlowable(BackpressureStrategy.BUFFER)
+                .observeOn(Schedulers.io())
+                .subscribe(s -> printLog(s));
+    }
+
+    private void flowableToObservable() {
+        Flowable<Integer> integerFlowable = Flowable.range(1, namesArray.size());
+        Observable.fromIterable(namesArray)
+                .flatMap(s -> integerFlowable.map(integer -> integer.toString() + s).toObservable())
+                .subscribe(s -> printLog(s));
+    }
+
+    private void flowableExample() {
+        /// In this example the flowable is not emitting all the values in one go.
+//        Flowable.range(1, 1000)
+//                .doOnNext(integer -> printLog("Emitting " + integer))
+//                .observeOn(Schedulers.io())
+//                .map(integer -> intenseCalculation(integer))
+//                .subscribe(integer -> printLog("Output " + integer));
+
+        Flowable.range(1, 1000)
+                .doOnNext(integer -> printLog("Emitting " + integer))
+                .observeOn(Schedulers.io())
+                .map(integer -> intenseCalculation(integer))
+                .subscribe(new FlowableSubscriber<Integer>() {
+                    @Override
+                    public void onSubscribe(Subscription s) {
+                        s.request(1000);
+                    }
+
+                    @Override
+                    public void onNext(Integer integer) {
+                        sleep(100);
+                        printLog(integer.toString());
+                    }
+
+                    @Override
+                    public void onError(Throwable t) {
+
+                    }
+
+                    @Override
+                    public void onComplete() {
+
+                    }
+                });
+
+    }
+
+    private void switchingExample() {
+
+        Observable<String> processedString = Observable.fromIterable(namesArray)
+                .concatMap(s -> Observable.just(s).delay(randomSleepTime(), TimeUnit.MILLISECONDS));
+
+        Observable.interval(5, TimeUnit.SECONDS)
+                .switchMap(aLong -> processedString.doOnDispose(() ->
+                        printLog("Disposing ")))
+                .subscribe(s -> printLog(s));
+
+        // switchMap() is just like flatMap() except that it will cancel any previous Observables
+        // that were processing and only chase after the latest one. This can be helpful in many
+        // situations to prevent redundant or stale work and is especially effective in user
+        // interfaces where rapid user inputs create stale requests.
+        // You can use it to cancel database queries, web requests, and other expensive tasks and
+        // replace it with a new task.
+    }
+
+    private void throttleExample() {
+
+        Observable<String> source1 = Observable.interval(100, TimeUnit.MILLISECONDS)
+                .map(aLong -> (aLong + 1) * 100)
+                .map(aLong -> "Observable 1 " + aLong)
+                .take(10);
+        Observable<String> source2 = Observable.interval(300, TimeUnit.MILLISECONDS)
+                .map(aLong -> (aLong + 1) * 300)
+                .map(aLong -> "Observable 2 " + aLong)
+                .take(10);
+        Observable<String> source3 = Observable.interval(500, TimeUnit.MILLISECONDS)
+                .map(aLong -> (aLong + 1) * 500)
+                .map(aLong -> "Observable 3 " + aLong)
+                .take(10);
+
+        Observable.concat(source1, source2, source3)
+                .throttleLast(1, TimeUnit.SECONDS)
+                .subscribe(s -> printLog(s));
+        // In output we will get all emission which which will be emitted by all three observables.
+        // The output would be Observable 1
+
+
     }
 
     private void bufferTimingExample() {
         // You can use buffer() at fixed time intervals by providing a long and TimeUnit.
         // To buffer emissions into a list at 1-second intervals,
         Observable.interval(300, TimeUnit.MILLISECONDS)
-                .map(aLong -> (aLong+1)*300)
+                .map(aLong -> (aLong + 1) * 300)
                 .buffer(1, TimeUnit.SECONDS)
-                .subscribe(longs -> printLog("Time Buffer = "+longs));
+                .subscribe(longs -> printLog("Time Buffer = " + longs));
 
         // a third count argument to provide a maximum buffer size.
         // This will result in a buffer emission at each time interval or when count is reached,
         // whichever happens first. If the count is reached right before the time window closes,
         // it will result in an empty buffer being emitted.
         Observable.interval(300, TimeUnit.MILLISECONDS)
-                .map(aLong -> (aLong+1)*300)
-                .buffer(1, TimeUnit.SECONDS,3)
-                .subscribe(longs -> printLog("Time Buffer = "+longs));
+                .map(aLong -> (aLong + 1) * 300)
+                .buffer(1, TimeUnit.SECONDS, 3)
+                .subscribe(longs -> printLog("Time Buffer = " + longs));
 
         // The other observable will act as the boundary to buffer.
-       Observable<Long> boundaryObservable= Observable.interval(1,TimeUnit.SECONDS);
-       Observable.interval(300, TimeUnit.MILLISECONDS)
-                .map(aLong -> (aLong+1)*300)
+        Observable<Long> boundaryObservable = Observable.interval(1, TimeUnit.SECONDS);
+        Observable.interval(300, TimeUnit.MILLISECONDS)
+                .map(aLong -> (aLong + 1) * 300)
                 .buffer(boundaryObservable)
-                .subscribe(longs -> printLog("Time Buffer = "+longs));
+                .subscribe(longs -> printLog("Time Buffer = " + longs));
 
     }
 
     private void bufferRangeExamples() {
         // Fixed Size buffering
-     Observable.range(1,10)
-             .buffer(8)
-             .subscribe(integers -> printLog(integers.toString()));
+        Observable.range(1, 10)
+                .buffer(8)
+                .subscribe(integers -> printLog(integers.toString()));
 
-     // Output would be [1, 2, 3, 4, 5, 6, 7, 8] [9, 10]
+        // Output would be [1, 2, 3, 4, 5, 6, 7, 8] [9, 10]
 
         // Note if the specified count is greater than the range then it will emit all the
         // source elements in one go
 
-     // Java collection operators with the emission
+        // Java collection operators with the emission
         Observable.fromIterable(namesArray)
                 .buffer(5, LinkedHashSet::new)
-                .subscribe(integers -> printLog("HashSet = "+integers.toString()));
+                .subscribe(integers -> printLog("HashSet = " + integers.toString()));
 
-      // Skip with buffer
+        // Skip with buffer
         // If skip is equal to count, the skip has no effect.
         // The first argument is the buffer range and the secong argument is the skip period
-      Observable.range(1,50)
-      .buffer(2,5)
-      .subscribe(integers -> printLog("Skip = "+integers.toString()));
+        Observable.range(1, 50)
+                .buffer(2, 5)
+                .subscribe(integers -> printLog("Skip = " + integers.toString()));
 
 
     }
@@ -1165,6 +1391,17 @@ public class MainActivity extends AppCompatActivity {
                     }
                 }
         );
+    }
+
+    public static int randomSleepTime() {
+        //returns random sleep time between 0 to 2000 milliseconds
+        return ThreadLocalRandom.current().nextInt(2000);
+    }
+
+    public static <T> T intenseCalculation(T value) {
+        //sleep up to 200 milliseconds
+        sleep(ThreadLocalRandom.current().nextInt(200));
+        return value;
     }
 
     public static void sleep(long millis) {

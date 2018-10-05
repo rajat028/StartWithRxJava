@@ -1,8 +1,0 @@
-
-Types of operator in RxJava
-
-1. Suppressing operators
-2. Transforming operators
-3. Reducing operators
-4. Error-recovery operators
-5. Action operators

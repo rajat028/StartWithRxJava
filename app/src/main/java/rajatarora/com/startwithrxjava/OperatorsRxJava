@@ -1,0 +1,16 @@
+
+Types of operator in RxJava
+
+1. Suppressing operators
+2. Transforming operators
+3. Reducing operators
+4. Error-recovery operators
+5. Action operators
+
+Backpressure Operators
+
+MISSING - Essentially results in no backpressure implementation at all. The downstream must deal with backpressure overflow, which can be helpful when used with onBackpressureXXX() operators, which we will cover later in this chapter.
+ERROR -   Signals a MissingBackpressureException the moment the downstream cannot keep up with the source.
+BUFFER - Queues up emissions in an unbounded queue until the downstream is able to consume them, but can cause an OutOfMemoryError if the queue gets too large.
+DROP - If the downstream cannot keep up, this will ignore upstream emissions and not queue anything while the downstream is busy.
+LATEST - This will keep only the latest emission until the downstream is ready to receive it.
